@@ -145,65 +145,252 @@ class YouTubeShortsOrchestrator:
         return pipeline_results
     
     async def _generate_voiceover_placeholder(self, script) -> Path:
-        """Generate voiceover (placeholder implementation)."""
-        # This will be implemented in the voiceover module
-        filepath = config.OUTPUT_DIR / "audio" / f"voiceover_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Create placeholder file
-        with open(filepath, 'w') as f:
-            f.write(f"# Voiceover placeholder for script:\n{script.full_script}")
-        
-        return filepath
+        """Generate voiceover using ElevenLabs/Google TTS."""
+        try:
+            from modules.voiceover.voiceover_generator import VoiceoverGenerator
+            from modules.voiceover.voice_config import VoiceConfig
+            
+            voiceover_generator = VoiceoverGenerator()
+            voice_config = VoiceConfig()
+            
+            # Get voice settings for content type
+            voice_settings = voice_config.get_voice_settings(
+                script.topic.content_type
+            )
+            
+            voiceover = await voiceover_generator.generate_voiceover(
+                script, 
+                voice_settings
+            )
+            
+            if voiceover:
+                logger.info(f"Voiceover generated: {voiceover.audio_path}")
+                return voiceover.audio_path
+            else:
+                logger.warning("Voiceover generation failed, creating placeholder")
+                raise Exception("Voiceover generation failed")
+                
+        except Exception as e:
+            logger.warning(f"Voiceover generation error: {e}, creating placeholder")
+            
+            # Fallback to placeholder
+            filepath = config.OUTPUT_DIR / "audio" / f"voiceover_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(filepath, 'w') as f:
+                f.write(f"# Voiceover placeholder for script:\n{script.full_script}")
+            
+            return filepath
     
     async def _generate_visuals_placeholder(self, topic) -> Path:
-        """Generate visuals (placeholder implementation)."""
-        # This will be implemented in the visual generation module
-        filepath = config.OUTPUT_DIR / "images" / f"visuals_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Create placeholder file
-        with open(filepath, 'w') as f:
-            f.write(f"# Visuals placeholder for topic: {topic.processed_title}")
-        
-        return filepath
+        """Generate visuals using Pexels/Unsplash."""
+        try:
+            from modules.visual_generation.visual_generator import VisualGenerator
+            
+            async with VisualGenerator() as visual_generator:
+                visuals = await visual_generator.generate_visuals(
+                    topic,
+                    preferred_source="pexels",
+                    num_images=1
+                )
+            
+            if visuals and visuals[0].image_path.exists():
+                logger.info(f"Visual generated: {visuals[0].image_path}")
+                return visuals[0].image_path
+            else:
+                logger.warning("Visual generation failed, creating placeholder")
+                raise Exception("Visual generation failed")
+                
+        except Exception as e:
+            logger.warning(f"Visual generation error: {e}, creating placeholder")
+            
+            # Fallback to placeholder
+            filepath = config.OUTPUT_DIR / "images" / f"visuals_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(filepath, 'w') as f:
+                f.write(f"# Visuals placeholder for topic: {topic.processed_title}")
+            
+            return filepath
     
     async def _generate_video_placeholder(self, script, voiceover_path, visuals_path) -> Path:
-        """Generate video (placeholder implementation)."""
-        # This will be implemented in the video stitching module
-        filepath = config.OUTPUT_DIR / "videos" / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Create placeholder file
-        with open(filepath, 'w') as f:
-            f.write(f"# Video placeholder\n")
-            f.write(f"Script: {script.full_script}\n")
-            f.write(f"Voiceover: {voiceover_path}\n")
-            f.write(f"Visuals: {visuals_path}\n")
-        
-        return filepath
+        """Generate video using ffmpeg video stitching."""
+        try:
+            from modules.video_stitching.video_stitcher import VideoStitcher, VideoProject
+            from modules.voiceover.voiceover_generator import GeneratedVoiceover, VoiceSettings
+            from modules.visual_generation.visual_generator import VisualAsset
+            
+            video_stitcher = VideoStitcher()
+            
+            # Create mock objects for the video stitcher
+            # (In a real implementation, these would be passed from the actual generators)
+            
+            # Mock voiceover object
+            voice_settings = VoiceSettings(voice_id="default")
+            voiceover = GeneratedVoiceover(
+                script=script,
+                audio_path=voiceover_path,
+                voice_settings=voice_settings,
+                provider="placeholder",
+                duration=script.estimated_duration,
+                file_size=1024,
+                generated_at=datetime.now()
+            )
+            
+            # Mock visual object
+            visual = VisualAsset(
+                topic=script.topic,
+                image_path=visuals_path,
+                source="placeholder",
+                source_url=None,
+                description="Placeholder visual",
+                width=720,
+                height=1280,
+                file_size=1024,
+                generated_at=datetime.now(),
+                keywords=script.topic.target_keywords
+            )
+            
+            video_project = await video_stitcher.create_video(
+                script,
+                voiceover,
+                [visual],
+                include_subtitles=True
+            )
+            
+            if video_project and video_project.video_path and video_project.video_path.exists():
+                logger.info(f"Video generated: {video_project.video_path}")
+                return video_project.video_path
+            else:
+                logger.warning("Video generation failed, creating placeholder")
+                raise Exception("Video generation failed")
+                
+        except Exception as e:
+            logger.warning(f"Video generation error: {e}, creating placeholder")
+            
+            # Fallback to placeholder
+            filepath = config.OUTPUT_DIR / "videos" / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(filepath, 'w') as f:
+                f.write(f"# Video placeholder\n")
+                f.write(f"Script: {script.full_script}\n")
+                f.write(f"Voiceover: {voiceover_path}\n")
+                f.write(f"Visuals: {visuals_path}\n")
+            
+            return filepath
     
     async def _generate_metadata_placeholder(self, script) -> Dict[str, Any]:
-        """Generate metadata (placeholder implementation)."""
-        # This will be implemented in the metadata generator module
-        return {
-            "title": script.topic.processed_title,
-            "description": f"Learn about {script.topic.original_topic.title}!\n\n{script.main_content}",
-            "tags": script.topic.target_keywords[:10],
-            "category": "Education",
-            "privacy": "public",
-            "thumbnail": "auto"
-        }
+        """Generate metadata using AI and SEO optimization."""
+        try:
+            from modules.metadata_generator.metadata_generator import MetadataGenerator
+            from modules.metadata_generator.seo_optimizer import SEOOptimizer
+            
+            metadata_generator = MetadataGenerator()
+            seo_optimizer = SEOOptimizer()
+            
+            # Generate base metadata
+            metadata = await metadata_generator.generate_metadata(script)
+            
+            # Optimize for SEO
+            metadata = seo_optimizer.optimize_metadata(
+                metadata, 
+                script.topic.target_keywords,
+                script.topic.content_type
+            )
+            
+            logger.info(f"Metadata generated: {metadata.title}")
+            
+            return {
+                "title": metadata.title,
+                "description": metadata.description,
+                "tags": metadata.tags,
+                "category": metadata.category,
+                "privacy": metadata.privacy,
+                "language": metadata.language
+            }
+            
+        except Exception as e:
+            logger.warning(f"Metadata generation error: {e}, using fallback")
+            
+            # Fallback metadata
+            return {
+                "title": script.topic.processed_title,
+                "description": f"Learn about {script.topic.original_topic.title}!\n\n{script.main_content}",
+                "tags": script.topic.target_keywords[:10],
+                "category": "Education",
+                "privacy": "public",
+                "thumbnail": "auto"
+            }
     
     async def _upload_to_youtube_placeholder(self, video_path, metadata) -> Dict[str, Any]:
-        """Upload to YouTube (placeholder implementation)."""
-        # This will be implemented in the YouTube uploader module
-        return {
-            "status": "uploaded_placeholder",
-            "video_id": "placeholder_video_id",
-            "url": "https://youtube.com/watch?v=placeholder",
-            "uploaded_at": datetime.now().isoformat()
-        }
+        """Upload to YouTube using YouTube Data API."""
+        try:
+            from modules.youtube_upload.youtube_uploader import YouTubeUploader
+            from modules.metadata_generator.metadata_generator import VideoMetadata
+            from modules.video_stitching.video_stitcher import VideoProject
+            
+            youtube_uploader = YouTubeUploader()
+            
+            # Test authentication first
+            if not await youtube_uploader.test_authentication():
+                logger.warning("YouTube authentication not configured")
+                return {
+                    "status": "authentication_failed",
+                    "error": "YouTube credentials not available",
+                    "uploaded_at": datetime.now().isoformat()
+                }
+            
+            # Create VideoMetadata object
+            video_metadata = VideoMetadata(
+                title=metadata["title"],
+                description=metadata["description"],
+                tags=metadata["tags"],
+                category=metadata.get("category", "27"),
+                privacy=metadata.get("privacy", "public"),
+                language=metadata.get("language", "en")
+            )
+            
+            # Create minimal VideoProject object
+            video_project = VideoProject(
+                script=None,  # Not needed for upload
+                voiceover=None,  # Not needed for upload
+                visuals=[],  # Not needed for upload
+                video_path=video_path,
+                duration=30.0  # Default duration
+            )
+            
+            upload_result = await youtube_uploader.upload_video(
+                video_project,
+                video_metadata
+            )
+            
+            if upload_result and upload_result.success:
+                logger.info(f"Video uploaded successfully: {upload_result.video_url}")
+                return {
+                    "status": "uploaded",
+                    "video_id": upload_result.video_id,
+                    "url": upload_result.video_url,
+                    "uploaded_at": upload_result.upload_time.isoformat()
+                }
+            else:
+                logger.error(f"Upload failed: {upload_result.error_message if upload_result else 'Unknown error'}")
+                return {
+                    "status": "upload_failed",
+                    "error": upload_result.error_message if upload_result else "Unknown error",
+                    "uploaded_at": datetime.now().isoformat()
+                }
+                
+        except Exception as e:
+            logger.warning(f"YouTube upload error: {e}, using placeholder")
+            
+            # Fallback placeholder
+            return {
+                "status": "upload_error",
+                "error": str(e),
+                "video_path": str(video_path),
+                "uploaded_at": datetime.now().isoformat()
+            }
     
     async def test_individual_modules(self):
         """Test individual modules."""
