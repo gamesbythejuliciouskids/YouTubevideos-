@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  youtube-shorts-automation:
+    build: .
+    container_name: youtube-shorts-bot
+    environment:
+      # Load environment variables from .env file
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
+      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
+      - YOUTUBE_CHANNEL_ID=${YOUTUBE_CHANNEL_ID}
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT}
+      - PEXELS_API_KEY=${PEXELS_API_KEY}
+      - UNSPLASH_ACCESS_KEY=${UNSPLASH_ACCESS_KEY}
+      - DEBUG=${DEBUG:-false}
+      - UPLOAD_SCHEDULE_TIME=${UPLOAD_SCHEDULE_TIME:-08:00}
+      - MAX_DAILY_UPLOADS=${MAX_DAILY_UPLOADS:-1}
+      - VIDEO_DURATION_SECONDS=${VIDEO_DURATION_SECONDS:-60}
+      - SCRIPT_MAX_WORDS=${SCRIPT_MAX_WORDS:-75}
+    volumes:
+      # Mount output directory to persist generated content
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - ./config:/app/config
+    restart: unless-stopped
+    
+    # For one-time runs, use this command override
+    # command: ["python", "main.py", "--run-once", "--debug"]
+    
+    # For testing, use this command override
+    # command: ["python", "main.py", "--test"]
+
+  # Optional: Add a scheduler service for automated runs
+  scheduler:
+    build: .
+    container_name: youtube-shorts-scheduler
+    environment:
+      # Same environment variables as above
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
+      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
+      - YOUTUBE_CHANNEL_ID=${YOUTUBE_CHANNEL_ID}
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - PEXELS_API_KEY=${PEXELS_API_KEY}
+      - UNSPLASH_ACCESS_KEY=${UNSPLASH_ACCESS_KEY}
+      - DEBUG=${DEBUG:-false}
+      - UPLOAD_SCHEDULE_TIME=${UPLOAD_SCHEDULE_TIME:-08:00}
+    volumes:
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - ./config:/app/config
+    command: >
+      sh -c "
+        # Install cron
+        apt-get update && apt-get install -y cron
+        
+        # Create cron job
+        echo '0 8 * * * cd /app && python main.py --run-once >> /app/logs/cron.log 2>&1' > /tmp/crontab
+        crontab /tmp/crontab
+        
+        # Start cron and keep container running
+        cron && tail -f /dev/null
+      "
+    restart: unless-stopped
+    profiles:
+      - scheduler  # Only start with: docker-compose --profile scheduler up
+
+volumes:
+  output_data:
+    driver: local
+  logs_data:
+    driver: local
